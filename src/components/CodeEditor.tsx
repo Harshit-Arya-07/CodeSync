@@ -11,8 +11,45 @@ import {
   Check, 
   AlertCircle,
   RefreshCw,
-  LogOut
+  LogOut,
+  Play,
+  Terminal,
+  Trash2
 } from 'lucide-react';
+
+// Types for socket payloads
+interface Participant {
+  id: string;
+  username: string;
+  joinedAt: string;
+  lastSeen: string;
+}
+interface RoomStatePayload {
+  code: string;
+  language: string;
+  participants: Participant[];
+}
+interface CodeUpdatePayload {
+  code: string;
+  language?: string;
+  updatedBy?: string;
+}
+interface LanguageUpdatePayload {
+  language: string;
+  updatedBy?: string;
+}
+interface RunResultPayload {
+  roomId: string;
+  language: string;
+  startedAt?: number;
+  durationMs: number;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut?: boolean;
+  outputTruncated?: boolean;
+  initiatedBy?: string;
+}
 
 interface CodeEditorProps {
   roomId: string;
@@ -26,11 +63,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [runOutput, setRunOutput] = useState('');
+  const [runError, setRunError] = useState<string | null>(null);
+  const [lastRunMeta, setLastRunMeta] = useState<{ durationMs: number; exitCode: number | null; initiatedBy?: string; startedAt?: number } | null>(null);
   
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReceivingUpdate = useRef(false);
 
+  const { VITE_SERVER_URL } = import.meta.env;
+  const serverUrl = VITE_SERVER_URL ?? 'http://localhost:3001';
   const {
     socket,
     isConnected,
@@ -41,7 +84,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
     emitCodeChange,
     emitLanguageChange,
     reconnect
-  } = useSocket({ serverPath: 'http://localhost:3001' });
+  } = useSocket({ serverPath: serverUrl });
 
   // Join room on component mount
   useEffect(() => {
@@ -54,7 +97,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
   useEffect(() => {
     if (!socket) return;
 
-    const handleRoomState = (data: any) => {
+    const handleRoomState = (data: RoomStatePayload) => {
       console.log('📥 Room state received');
       isReceivingUpdate.current = true;
       setCode(data.code);
@@ -66,7 +109,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
       }, 100);
     };
 
-    const handleCodeUpdate = (data: any) => {
+    const handleCodeUpdate = (data: CodeUpdatePayload) => {
       console.log('📝 Code update from:', data.updatedBy);
       isReceivingUpdate.current = true;
       setCode(data.code);
@@ -77,7 +120,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
       }, 100);
     };
 
-    const handleLanguageUpdate = (data: any) => {
+    const handleLanguageUpdate = (data: LanguageUpdatePayload) => {
       console.log('🔧 Language changed to:', data.language, 'by:', data.updatedBy);
       setLanguage(data.language);
     };
@@ -90,6 +133,32 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
       socket.off('room-state', handleRoomState);
       socket.off('code-update', handleCodeUpdate);
       socket.off('language-update', handleLanguageUpdate);
+    };
+  }, [socket]);
+
+  // Listen for run results
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRunResult = (data: RunResultPayload) => {
+      setIsRunning(false);
+      setRunError(null);
+      setLastRunMeta({ durationMs: data.durationMs, exitCode: data.exitCode, initiatedBy: data.initiatedBy, startedAt: data.startedAt });
+      const output = [
+        data.stdout ? data.stdout : '',
+        data.stderr ? (data.stdout ? '\n' : '') + data.stderr : ''
+      ].join('');
+      setRunOutput(output);
+      if (data.timedOut) {
+        setRunError('Execution timed out');
+      } else if (data.outputTruncated) {
+        setRunError('Output truncated');
+      }
+    };
+
+    socket.on('run-result', handleRunResult);
+    return () => {
+      socket.off('run-result', handleRunResult);
     };
   }, [socket]);
 
@@ -116,7 +185,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
   };
 
   const handleCodeChange = useCallback((value: string | undefined) => {
-    if (isReceivingUpdate.current || !value) return;
+    if (isReceivingUpdate.current || value === undefined) return;
     
     setCode(value);
     
@@ -134,6 +203,20 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
     emitLanguageChange(newLanguage);
+  };
+
+  const runnableLanguages = new Set(['javascript', 'python', 'java', 'cpp']);
+  const handleRun = () => {
+    if (!socket || !isConnected) return;
+    if (!runnableLanguages.has(language)) {
+      setRunError(`Run is not supported for ${language}.`);
+      return;
+    }
+    setIsRunning(true);
+    setRunError(null);
+    setRunOutput('');
+    setLastRunMeta(null);
+    socket.emit('run-code', { roomId, code, language });
   };
 
   const copyRoomId = async () => {
@@ -321,6 +404,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
               <div className="text-xs">
                 {languages.find(l => l.value === language)?.icon} {languages.find(l => l.value === language)?.label}
               </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleRun}
+                  disabled={!isConnected || isRunning}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-white text-xs transition-colors ${isRunning ? 'bg-green-700 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                  title={runnableLanguages.has(language) ? 'Run code' : `Run not supported for ${language}`}
+                >
+                  <Play className="w-4 h-4" />
+                  <span>{isRunning ? 'Running...' : 'Run'}</span>
+                </button>
+                <button
+                  onClick={() => { setRunOutput(''); setRunError(null); setLastRunMeta(null); }}
+                  className="flex items-center space-x-1 px-3 py-1.5 rounded-md text-gray-200 text-xs bg-gray-700 hover:bg-gray-600 transition-colors"
+                  title="Clear output"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Clear</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -378,6 +480,29 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ roomId, username, onRoom
               </div>
             </div>
           )}
+        </div>
+        
+        {/* Run Output Panel */}
+        <div className="border-t border-gray-700 bg-gray-900">
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center space-x-2 text-gray-300 text-sm">
+              <Terminal className="w-4 h-4" />
+              <span>Output</span>
+              {lastRunMeta && (
+                <span className="text-xs text-gray-500">
+                  • exit {lastRunMeta.exitCode ?? '—'} • {lastRunMeta.durationMs}ms {lastRunMeta.initiatedBy ? `• by ${lastRunMeta.initiatedBy}` : ''}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="px-4 pb-4">
+            {runError && (
+              <div className="mb-2 text-xs text-yellow-400">{runError}</div>
+            )}
+            <pre className="bg-gray-800 text-gray-200 text-sm rounded-md p-3 overflow-auto max-h-48 whitespace-pre-wrap">
+{runOutput || (isRunning ? 'Running…' : 'No output yet.')}
+            </pre>
+          </div>
         </div>
       </div>
     </div>

@@ -53,7 +53,6 @@ export const useSocket = ({ serverPath }: UseSocketProps) => {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
-      maxReconnectionAttempts: 5
     });
 
     socketRef.current = newSocket;

@@ -13,6 +13,7 @@ A modern, real-time collaborative code editor built with React, Monaco Editor, a
 - **Connection Management**: Automatic reconnection and error handling
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Professional UI**: Clean, modern interface optimized for coding
+- **Run Code (beta)**: Execute JavaScript from the editor with room-wide results
 
 ## 🚀 Quick Start
 
@@ -77,6 +78,16 @@ collaborative-code-editor/
 └── README.md
 ```
 
+## ▶️ Run Code (Beta)
+
+Supports JavaScript, Python, Java, and C++:
+- Click the Run button in the editor header to execute the current code.
+- Results (stdout/stderr, exit code, time) are shown in the Output panel and broadcast to all users in the room.
+- Safety limits: 5s timeout and 64KB output cap.
+- Requirements: Python (python or py), Java (javac/java), C++ compiler (g++ or clang++). Ensure these are installed and available on PATH.
+- Java/C++: provide a full program with an entry point (public class Main for Java; int main() for C++).
+- Note: This runs code on the server process (no OS sandbox). Do not expose this to untrusted users without isolation.
+
 ## 🎯 How It Works
 
 ### Room Management
@@ -117,18 +128,20 @@ GET /api/rooms/:roomId
 ```
 Get information about a specific room.
 
-## 🔌 Socket Events
+### Socket Events
 
 ### Client to Server
 - `join-room` - Join a collaborative room
 - `code-change` - Send code changes
 - `language-change` - Change programming language
+- `run-code` - Request code execution (payload: `{ roomId, code, language }`). Languages: javascript, python, java, cpp
 - `ping` - Connection health check
 
 ### Server to Client
 - `room-state` - Initial room state on join
 - `code-update` - Code changes from other users
 - `language-update` - Language changes
+- `run-result` - Code execution result broadcast to the room (`{ stdout, stderr, exitCode, durationMs, initiatedBy, timedOut, outputTruncated }`)
 - `user-joined` - New user joined the room
 - `user-left` - User left the room
 - `pong` - Health check response
@@ -167,7 +180,7 @@ Monaco Editor options can be customized in the `handleEditorDidMount` function i
 
 ### Environment Variables
 - `PORT` - Server port (default: 3001)
-- Update Socket.IO server URL in `useSocket.ts` for production
+- `VITE_SERVER_URL` - Frontend env var to point to the Socket.IO server (defaults to http://localhost:3001)
 
 ## 🤝 Contributing
 
@@ -194,7 +207,7 @@ This project is open source and available under the [MIT License](LICENSE).
 - [ ] Persistent code storage with database
 - [ ] File upload and project management
 - [ ] Voice/video chat integration
-- [ ] Code execution and preview
+- [ ] Multi-language code execution and preview (currently JavaScript only)
 - [ ] Version control and history
 - [ ] Cursor position sharing
 - [ ] Collaborative debugging tools

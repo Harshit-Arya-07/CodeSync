@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Code, Users, Zap, Globe, Shield, Sparkles } from 'lucide-react';
+import { Code, Users, Zap, Shield, Sparkles } from 'lucide-react';
 
 interface RoomJoinProps {
   onJoinRoom: (roomId: string, username: string) => void;
