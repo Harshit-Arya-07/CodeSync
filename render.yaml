@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: codesync
+    env: docker
+    repo: https://github.com/Harshit-Arya-07/CodeSync.git
+    region: oregon
+    plan: free
+    branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ORIGIN
+        value: https://codesync.onrender.com
+    healthCheckPath: /api/health
