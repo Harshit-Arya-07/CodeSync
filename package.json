@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\" --names \"SERVER,CLIENT\" --prefix-colors \"blue,green\"",
+    "start": "node server/index.js",
     "client": "vite",
     "server": "node server/index.js",
     "build": "vite build",

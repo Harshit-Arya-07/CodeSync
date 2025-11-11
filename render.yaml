@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: codesync
-    env: docker
+    name: codesync-backend
+    env: node
     repo: https://github.com/Harshit-Arya-07/CodeSync.git
     region: oregon
     plan: free
     branch: main
+    buildCommand: "npm ci && npm run build"
+    startCommand: "npm start"
     envVars:
       - key: NODE_ENV
         value: production
