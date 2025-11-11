@@ -11,6 +11,4 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: ORIGIN
-        value: https://codesync.onrender.com
     healthCheckPath: /api/health
